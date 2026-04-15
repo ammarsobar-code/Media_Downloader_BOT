@@ -1,6 +1,6 @@
 pyTelegramBotAPI
 yt-dlp
-flask
 requests
+flask
 fake-useragent
 python-dotenv
