@@ -4,6 +4,7 @@ import yt_dlp
 import time
 import requests
 import json
+import hashlib
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask
@@ -18,9 +19,9 @@ load_dotenv()
 app = Flask('')
 ua = UserAgent()
 DATA_FILE = 'users_data.json'
+ALTERNATIVE_BOT = "@SnapTok_down_bot" # معرف البوت البديل
 
 def load_data():
-    """تحميل بيانات المستخدمين من ملف JSON لضمان عدم ضياع التفعيل"""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r') as f:
@@ -30,11 +31,9 @@ def load_data():
     return {}
 
 def save_data(data):
-    """حفظ بيانات المستخدمين في ملف JSON"""
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f)
 
-# تحميل البيانات عند بدء التشغيل
 user_data = load_data()
 
 @app.route('/')
@@ -87,7 +86,7 @@ def handle_snap_or_fallback(url, chat_id, bot):
     except: pass
     return False
 
-# --- 3. إعدادات البوت والتحقق الدوري (3 أيام) ---
+# --- 3. إعدادات البوت والتحقق الدوري ---
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 SNAP_URL_VAR = os.getenv('SNAP_URL', 'https://snapchat.com/')
@@ -119,7 +118,6 @@ def verify_callback(call):
         save_data(user_data)
         bot.send_message(uid, "لم يتم التحقق من متابعتك لحسابي ⚠️\nتأكد من المتابعة ثم اضغط تفعيل مجدداً 👻", reply_markup=get_verify_markup())
     else:
-        # تفعيل ناجح وحفظ التاريخ الحالي
         user_data[uid] = {
             'status': 2,
             'last_verify': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -132,8 +130,8 @@ def verify_callback(call):
 def main_handler(message):
     uid = str(message.chat.id)
     url = message.text.strip()
+    error_msg = f"نواجه مشكلة تقنية حالياً 🛠️\nيمكنكم استخدام البوت البديل: {ALTERNATIVE_BOT}"
 
-    # فحص الصلاحية (3 أيام)
     is_verified = False
     if uid in user_data and user_data[uid].get('status') == 2:
         last_verify_str = user_data[uid].get('last_verify')
@@ -153,24 +151,33 @@ def main_handler(message):
         try:
             if "tiktok.com" in url:
                 success = handle_tiktok(url, uid, bot)
-            
             if not success:
                 success = handle_snap_or_fallback(url, uid, bot)
 
             if success:
                 bot.delete_message(uid, prog.message_id)
             else:
-                bot.edit_message_text("نواجه مشكلة تقنية حالياً 🛠️", uid, prog.message_id)
+                bot.edit_message_text(error_msg, uid, prog.message_id)
         except:
-            bot.edit_message_text("نواجه مشكلة تقنية حالياً 🛠️", uid, prog.message_id)
+            bot.edit_message_text(error_msg, uid, prog.message_id)
     else:
         bot.reply_to(message, "رابط غير صحيح ❌")
 
-# --- 4. التشغيل النهائي ---
+# --- 4. حماية السيرفر من الخمول (Oracle Keep Alive) ---
+
+def keep_cpu_busy():
+    while True:
+        for _ in range(70000):
+            hashlib.sha256(b"active_session").hexdigest()
+        time.sleep(12)
+
+# --- 5. التشغيل النهائي ---
+
 def run_flask():
     app.run(host='0.0.0.0', port=5000)
 
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
-    print("البوت يعمل بنظام التفعيل كل 3 أيام... 🚀")
+    Thread(target=run_flask, daemon=True).start()
+    Thread(target=keep_cpu_busy, daemon=True).start()
+    print("البوت يعمل ونظام الحماية نشط... 🚀")
     bot.infinity_polling()
