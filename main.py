@@ -125,8 +125,8 @@ def verify_callback(call):
         bot.answer_callback_query(call.id, "فحص سجلات المتابعة...")
         
         fail_text = (
-            "⚠️ لم يتم التحقق من متابعتك في سجلاتنا اللحظية.\n\n"
-            "يرجى التأكد من ضغط زر 'متابعة الحساب' بالأعلى، ثم اضغط على زر 'تفعيل البوت' أدناه مرة أخرى للتأكيد."
+            "⚠️ لم يتم التحقق من متابعتك   .\n\n"
+            "يرجى التأكد من ضغط زر 'متابعة الحساب' ، ثم اضغط على زر 'تفعيل البوت' أدناه مرة أخرى للتأكيد."
         )
         bot.send_message(uid, fail_text, reply_markup=get_verify_markup())
     
@@ -134,7 +134,7 @@ def verify_callback(call):
         # الخطوة الثانية: التفعيل الفعلي لمدة يومين
         user_status[uid] = {"status": 2, "time": time.time()}
         bot.answer_callback_query(call.id, "تم التفعيل بنجاح! ✅")
-        bot.send_message(uid, "✨ تهانينا! تم تفعيل ميزات البوت لك بنجاح لمدة يومين.\nأرسل الآن أي رابط من سناب شات أو تيك توك.")
+        bot.send_message(uid, "\nأرسل الآن أي رابط من سناب شات أو تيك توك.")
 
 @bot.message_handler(func=lambda message: True)
 def main_handler(message):
