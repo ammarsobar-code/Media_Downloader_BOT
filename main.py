@@ -20,7 +20,7 @@ app = Flask('')
 ua = UserAgent()
 DATA_FILE = 'users_data.json'
 ALTERNATIVE_BOT = "@SnapTok_down_bot"
-ADMIN_ID = 5148560761 # آيدي الإدارة الخاص بك
+ADMIN_ID = 5148560761  # ID الإدارة الخاص بك
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -33,15 +33,15 @@ def load_data():
 
 def save_data(data):
     with open(DATA_FILE, 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=4)
 
 user_data = load_data()
 
 @app.route('/')
 def home():
-    return "Bot is running on Oracle Cloud!"
+    return "Bot is running!"
 
-# --- 2. محركات التحميل (كما هي في كودك) ---
+# --- 2. محركات التحميل ---
 
 def handle_tiktok(url, chat_id, bot):
     try:
@@ -84,7 +84,7 @@ def handle_snap_or_fallback(url, chat_id, bot):
     except: pass
     return False
 
-# --- 3. إعدادات البوت والتحقق المطور ---
+# --- 3. إعدادات البوت والتحقق المجدد كل يومين ---
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 SNAP_URL_VAR = os.getenv('SNAP_URL', 'https://snapchat.com/')
@@ -114,7 +114,7 @@ def send_welcome(message):
 def admin_command(message):
     if message.chat.id == ADMIN_ID:
         total_users = len(user_data)
-        bot.reply_to(message, f"📊 عدد مستخدمي البوت الحالي: {total_users}")
+        bot.reply_to(message, f"📊 إحصائيات الإدارة:\n\nعدد المستخدمين الإجمالي: {total_users}")
 
 @bot.callback_query_handler(func=lambda call: call.data == "verify_user")
 def verify_callback(call):
@@ -123,20 +123,26 @@ def verify_callback(call):
     status = user_info.get('status', 0)
 
     if status == 0:
-        # الخطوة الأولى
-        user_data[uid] = {'status': 1, 'last_verify': ''}
+        # الخطوة الأولى: تنبيه المستخدم وتغيير الحالة لـ 1
+        user_data[uid]['status'] = 1
         save_data(user_data)
-        bot.answer_callback_query(call.id, "فشل التحقق التلقائي")
-        bot.send_message(uid, "لم يتم التحقق من متابعتك لحسابي ⚠️\nتأكد من المتابعة ثم اضغط تفعيل مجدداً 👻", reply_markup=get_verify_markup())
-    else:
-        # الخطوة الثانية (التفعيل)
+        bot.answer_callback_query(call.id, "جاري فحص المتابعة...")
+        
+        fail_text = "⚠️ لم يتم التحقق من متابعتك لحسابي!\nتأكد من المتابعة ثم اضغط على زر 'تفعيل البوت' مرة أخرى للتأكيد 👻"
+        bot.send_message(uid, fail_text, reply_markup=get_verify_markup())
+    
+    elif status == 1:
+        # الخطوة الثانية: التفعيل الفعلي وحفظ وقت التفعيل الحالي
         user_data[uid] = {
             'status': 2,
             'last_verify': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         save_data(user_data)
-        bot.answer_callback_query(call.id, "تم التفعيل بنجاح! ✅")
-        bot.send_message(uid, "✅ تم تفعيل البوت بنجاح لمدة 3 أيام، يمكنك الآن إرسال الرابط.")
+        bot.answer_callback_query(call.id, "تم التفعيل! ✅")
+        bot.send_message(uid, "✅ \nأرسل الآن أي رابط للتحميل.")
+    
+    elif status == 2:
+        bot.answer_callback_query(call.id, "حسابك مفعل بالفعل! ✅")
 
 @bot.message_handler(func=lambda message: True)
 def main_handler(message):
@@ -144,24 +150,27 @@ def main_handler(message):
     url = message.text.strip()
     error_msg = f"نواجه مشكلة تقنية حالياً 🛠️\n"
 
+    # فحص الصلاحية وإعادة الضبط إذا انتهت الـ 48 ساعة
     is_verified = False
     if uid in user_data and user_data[uid].get('status') == 2:
         last_verify_str = user_data[uid].get('last_verify')
         try:
             last_verify_date = datetime.strptime(last_verify_str, "%Y-%m-%d %H:%M:%S")
-            # إذا مر أكثر من 3 أيام، يصفر الحالة
-            if datetime.now() < last_verify_date + timedelta(days=3):
+            # إذا لم تنتهِ الـ 48 ساعة (يومين)
+            if datetime.now() < last_verify_date + timedelta(days=2):
                 is_verified = True
             else:
-                user_data[uid]['status'] = 0 # إعادة التصفير بعد انتهاء المدة
+                # انتهت المدة -> نرجعه للحالة صفر (0) ليضطر للتحقق بخطوتين مجدداً
+                user_data[uid] = {'status': 0, 'last_verify': ''}
                 save_data(user_data)
-        except: pass
+        except:
+            pass
 
     if not is_verified:
         send_welcome(message)
         return
 
-    if "tiktok.com" in url or "snapchat.com" in url or "v.it7.to" in url:
+    if any(domain in url for domain in ["tiktok.com", "snapchat.com", "v.it7.to"]):
         prog = bot.reply_to(message, "جاري التحميل... ⏳")
         success = False
         try:
@@ -177,14 +186,15 @@ def main_handler(message):
         except:
             bot.edit_message_text(error_msg, uid, prog.message_id)
     else:
-        bot.reply_to(message, "رابط غير صحيح ❌")
+        bot.reply_to(message, "يرجى إرسال رابط صحيح ❌")
 
-# --- 4. حماية السيرفر (كما هي) ---
+# --- 4. حماية السيرفر والتشغيل ---
+
 def keep_cpu_busy():
     while True:
         for _ in range(70000):
             hashlib.sha256(b"active_session").hexdigest()
-        time.sleep(12)
+        time.sleep(15)
 
 def run_flask():
     app.run(host='0.0.0.0', port=5000)
@@ -192,5 +202,5 @@ def run_flask():
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
     Thread(target=keep_cpu_busy, daemon=True).start()
-    print("البوت يعمل بنظام التحقق المطور... 🚀")
+    print("البوت يعمل بنظام التحقق المكرر كل يومين... 🚀")
     bot.infinity_polling()
