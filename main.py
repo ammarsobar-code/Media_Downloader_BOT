@@ -14,7 +14,7 @@ USERS_FILE = "users.txt"
 
 # --- المتغيرات التي يمكنك تعديلها ---
 DAYS_TO_EXPIRE = 2  # مدة التفعيل (بالأيام)
-ADMIN_ID = 582930122  # <--- ضع الـ ID الخاص بك هنا ليعمل أمر الإحصائيات
+ADMIN_ID = 5148560761  # <--- ضع الـ ID الخاص بك هنا ليعمل أمر الإحصائيات
 
 @app.route('/')
 def home(): return "Bot is Alive and Running!"
