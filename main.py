@@ -19,7 +19,8 @@ load_dotenv()
 app = Flask('')
 ua = UserAgent()
 DATA_FILE = 'users_data.json'
-ALTERNATIVE_BOT = "@SnapTok_down_bot" # معرف البوت البديل
+ALTERNATIVE_BOT = "@SnapTok_down_bot"
+ADMIN_ID = 5148560761 # آيدي الإدارة الخاص بك
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -40,14 +41,13 @@ user_data = load_data()
 def home():
     return "Bot is running on Oracle Cloud!"
 
-# --- 2. محركات التحميل ---
+# --- 2. محركات التحميل (كما هي في كودك) ---
 
 def handle_tiktok(url, chat_id, bot):
     try:
         api_url = f"https://www.tikwm.com/api/?url={url}"
         headers = {'User-Agent': ua.random}
         response = requests.get(api_url, headers=headers).json()
-
         if response.get('code') == 0:
             data = response['data']
             if 'images' in data and data['images']:
@@ -56,8 +56,7 @@ def handle_tiktok(url, chat_id, bot):
                 bot.send_media_group(chat_id, media_group)
                 return True
             elif 'play' in data:
-                video_url = data['play']
-                bot.send_video(chat_id, video_url, caption="") 
+                bot.send_video(chat_id, data['play'], caption="") 
                 return True
     except: pass
     return False
@@ -79,14 +78,13 @@ def handle_snap_or_fallback(url, chat_id, bot):
             if 'entries' in info and info['entries']:
                 valid_entries = [e for e in info['entries'] if e]
                 if valid_entries: video_url = valid_entries[-1].get('url')
-
             if video_url:
                 bot.send_video(chat_id, video_url, caption="") 
                 return True
     except: pass
     return False
 
-# --- 3. إعدادات البوت والتحقق الدوري ---
+# --- 3. إعدادات البوت والتحقق المطور ---
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 SNAP_URL_VAR = os.getenv('SNAP_URL', 'https://snapchat.com/')
@@ -100,6 +98,11 @@ def get_verify_markup():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    uid = str(message.chat.id)
+    if uid not in user_data:
+        user_data[uid] = {'status': 0, 'last_verify': ''}
+        save_data(user_data)
+        
     welcome_text = (
         "أهلاً بك في بوت التحميل 📥\n"
         "هذا البوت يدعم سناب شات و تيك توك 📲\n\n"
@@ -107,38 +110,51 @@ def send_welcome(message):
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_verify_markup())
 
+@bot.message_handler(commands=['admin'])
+def admin_command(message):
+    if message.chat.id == ADMIN_ID:
+        total_users = len(user_data)
+        bot.reply_to(message, f"📊 عدد مستخدمي البوت الحالي: {total_users}")
+
 @bot.callback_query_handler(func=lambda call: call.data == "verify_user")
 def verify_callback(call):
     uid = str(call.message.chat.id)
-    user_info = user_data.get(uid, {})
+    user_info = user_data.get(uid, {'status': 0, 'last_verify': ''})
     status = user_info.get('status', 0)
 
     if status == 0:
+        # الخطوة الأولى
         user_data[uid] = {'status': 1, 'last_verify': ''}
         save_data(user_data)
+        bot.answer_callback_query(call.id, "فشل التحقق التلقائي")
         bot.send_message(uid, "لم يتم التحقق من متابعتك لحسابي ⚠️\nتأكد من المتابعة ثم اضغط تفعيل مجدداً 👻", reply_markup=get_verify_markup())
     else:
+        # الخطوة الثانية (التفعيل)
         user_data[uid] = {
             'status': 2,
             'last_verify': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         save_data(user_data)
-        bot.answer_callback_query(call.id, "تم التفعيل! ✅")
-        bot.send_message(uid, "تم تفعيل البوت بنجاح، يمكنك الآن إرسال الرابط ✅")
+        bot.answer_callback_query(call.id, "تم التفعيل بنجاح! ✅")
+        bot.send_message(uid, "✅ تم تفعيل البوت بنجاح لمدة 3 أيام، يمكنك الآن إرسال الرابط.")
 
 @bot.message_handler(func=lambda message: True)
 def main_handler(message):
     uid = str(message.chat.id)
     url = message.text.strip()
-    error_msg = f"نواجه مشكلة تقنية حالياً 🛠️\nيمكنكم استخدام البوت البديل: {ALTERNATIVE_BOT}"
+    error_msg = f"نواجه مشكلة تقنية حالياً 🛠️\n"
 
     is_verified = False
     if uid in user_data and user_data[uid].get('status') == 2:
         last_verify_str = user_data[uid].get('last_verify')
         try:
             last_verify_date = datetime.strptime(last_verify_str, "%Y-%m-%d %H:%M:%S")
+            # إذا مر أكثر من 3 أيام، يصفر الحالة
             if datetime.now() < last_verify_date + timedelta(days=3):
                 is_verified = True
+            else:
+                user_data[uid]['status'] = 0 # إعادة التصفير بعد انتهاء المدة
+                save_data(user_data)
         except: pass
 
     if not is_verified:
@@ -163,15 +179,12 @@ def main_handler(message):
     else:
         bot.reply_to(message, "رابط غير صحيح ❌")
 
-# --- 4. حماية السيرفر من الخمول (Oracle Keep Alive) ---
-
+# --- 4. حماية السيرفر (كما هي) ---
 def keep_cpu_busy():
     while True:
         for _ in range(70000):
             hashlib.sha256(b"active_session").hexdigest()
         time.sleep(12)
-
-# --- 5. التشغيل النهائي ---
 
 def run_flask():
     app.run(host='0.0.0.0', port=5000)
@@ -179,5 +192,5 @@ def run_flask():
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
     Thread(target=keep_cpu_busy, daemon=True).start()
-    print("البوت يعمل ونظام الحماية نشط... 🚀")
+    print("البوت يعمل بنظام التحقق المطور... 🚀")
     bot.infinity_polling()
