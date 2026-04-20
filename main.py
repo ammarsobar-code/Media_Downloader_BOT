@@ -19,11 +19,7 @@ load_dotenv()
 app = Flask('')
 ua = UserAgent()
 DATA_FILE = 'users_data.json'
-ALTERNATIVE_BOT = "@SnapTok_down_bot" 
-
-# --- المتغيرات القابلة للتعديل ---
-DAYS_TO_EXPIRE = 2  # مدة التفعيل (أيام)
-ADMIN_ID = 5148560761  # <--- ضع الـ ID الخاص بك هنا
+ALTERNATIVE_BOT = "@SnapTok_down_bot" # معرف البوت البديل
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -51,6 +47,7 @@ def handle_tiktok(url, chat_id, bot):
         api_url = f"https://www.tikwm.com/api/?url={url}"
         headers = {'User-Agent': ua.random}
         response = requests.get(api_url, headers=headers).json()
+
         if response.get('code') == 0:
             data = response['data']
             if 'images' in data and data['images']:
@@ -59,7 +56,8 @@ def handle_tiktok(url, chat_id, bot):
                 bot.send_media_group(chat_id, media_group)
                 return True
             elif 'play' in data:
-                bot.send_video(chat_id, data['play'], caption="") 
+                video_url = data['play']
+                bot.send_video(chat_id, video_url, caption="") 
                 return True
     except: pass
     return False
@@ -69,20 +67,21 @@ def handle_snap_or_fallback(url, chat_id, bot):
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'quiet': True,
         'no_warnings': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'user_agent': ua.random,
         'nocheckcertificate': True,
         'noplaylist': True,
         'merge_output_format': 'mp4',
-        'outtmpl': f'vid_{chat_id}_%(id)s.%(ext)s'
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            if os.path.exists(filename):
-                with open(filename, 'rb') as video:
-                    bot.send_video(chat_id, video)
-                os.remove(filename)
+            info = ydl.extract_info(url, download=False)
+            video_url = info.get('url')
+            if 'entries' in info and info['entries']:
+                valid_entries = [e for e in info['entries'] if e]
+                if valid_entries: video_url = valid_entries[-1].get('url')
+
+            if video_url:
+                bot.send_video(chat_id, video_url, caption="") 
                 return True
     except: pass
     return False
@@ -101,11 +100,6 @@ def get_verify_markup():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    uid = str(message.chat.id)
-    if uid not in user_data:
-        user_data[uid] = {'status': 0, 'last_verify': ''}
-        save_data(user_data)
-        
     welcome_text = (
         "أهلاً بك في بوت التحميل 📥\n"
         "هذا البوت يدعم سناب شات و تيك توك 📲\n\n"
@@ -113,64 +107,50 @@ def send_welcome(message):
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_verify_markup())
 
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    if message.chat.id == ADMIN_ID:
-        count = len(user_data)
-        bot.reply_to(message, f"📊 إحصائيات البوت:\n\nعدد المستخدمين الإجمالي: {count}")
-
 @bot.callback_query_handler(func=lambda call: call.data == "verify_user")
 def verify_callback(call):
     uid = str(call.message.chat.id)
-    user_info = user_data.get(uid, {'status': 0})
+    user_info = user_data.get(uid, {})
     status = user_info.get('status', 0)
 
     if status == 0:
-        # الخطوة الأولى: تنبيه وتحديث الحالة لـ 1
         user_data[uid] = {'status': 1, 'last_verify': ''}
         save_data(user_data)
-        bot.answer_callback_query(call.id, "جاري الفحص...")
-        
-        fail_text = "⚠️ لم يتم التحقق من متابعتك! تأكد من المتابعة ثم اضغط تفعيل مجدداً 👻"
-        bot.send_message(uid, fail_text, reply_markup=get_verify_markup())
+        bot.send_message(uid, "لم يتم التحقق من متابعتك لحسابي ⚠️\nتأكد من المتابعة ثم اضغط تفعيل مجدداً 👻", reply_markup=get_verify_markup())
     else:
-        # الخطوة الثانية: التفعيل الفعلي لمدة يومين (أو القيمة المحددة)
         user_data[uid] = {
             'status': 2,
             'last_verify': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         save_data(user_data)
         bot.answer_callback_query(call.id, "تم التفعيل! ✅")
-        bot.send_message(uid, "✅ تم تفعيل البوت بنجاح ، يمكنك الآن إرسال الروابط.")
+        bot.send_message(uid, "تم تفعيل البوت بنجاح، يمكنك الآن إرسال الرابط ✅")
 
 @bot.message_handler(func=lambda message: True)
 def main_handler(message):
     uid = str(message.chat.id)
     url = message.text.strip()
-    error_msg = f"نواجه مشكلة تقنية حالياً أو الرابط غير مدعوم 🛠️\nيمكنكم استخدام البوت البديل: {ALTERNATIVE_BOT}"
+    error_msg = f"نواجه مشكلة تقنية حالياً 🛠️\nيمكنكم استخدام البوت البديل: {ALTERNATIVE_BOT}"
 
     is_verified = False
     if uid in user_data and user_data[uid].get('status') == 2:
         last_verify_str = user_data[uid].get('last_verify')
         try:
             last_verify_date = datetime.strptime(last_verify_str, "%Y-%m-%d %H:%M:%S")
-            if datetime.now() < last_verify_date + timedelta(days=DAYS_TO_EXPIRE):
+            if datetime.now() < last_verify_date + timedelta(days=3):
                 is_verified = True
         except: pass
 
     if not is_verified:
-        user_data[uid] = {'status': 0, 'last_verify': ''} # إعادة تعيين إذا انتهت المدة
-        save_data(user_data)
         send_welcome(message)
         return
 
-    if any(domain in url for domain in ["tiktok.com", "snapchat.com", "v.it7.to"]):
+    if "tiktok.com" in url or "snapchat.com" in url or "v.it7.to" in url:
         prog = bot.reply_to(message, "جاري التحميل... ⏳")
         success = False
         try:
             if "tiktok.com" in url:
                 success = handle_tiktok(url, uid, bot)
-            
             if not success:
                 success = handle_snap_or_fallback(url, uid, bot)
 
@@ -181,7 +161,7 @@ def main_handler(message):
         except:
             bot.edit_message_text(error_msg, uid, prog.message_id)
     else:
-        bot.reply_to(message, "رابط غير صحيح ❌ يرجى إرسال روابط سناب أو تيك توك.")
+        bot.reply_to(message, "رابط غير صحيح ❌")
 
 # --- 4. حماية السيرفر من الخمول (Oracle Keep Alive) ---
 
@@ -189,7 +169,7 @@ def keep_cpu_busy():
     while True:
         for _ in range(70000):
             hashlib.sha256(b"active_session").hexdigest()
-        time.sleep(15)
+        time.sleep(12)
 
 # --- 5. التشغيل النهائي ---
 
