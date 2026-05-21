@@ -52,9 +52,15 @@ def handle_tiktok(url, chat_id, bot):
             data = response['data']
             if 'images' in data and data['images']:
                 images = data['images']
-                media_group = [InputMediaPhoto(img_url) for img_url in images[:10]]
-                bot.send_media_group(chat_id, media_group)
+                
+                # تقسيم الصور إلى مجموعات، كل مجموعة تحتوي على 10 صور كحد أقصى
+                for i in range(0, len(images), 10):
+                    chunk = images[i:i+10]
+                    media_group = [InputMediaPhoto(img_url) for img_url in chunk]
+                    bot.send_media_group(chat_id, media_group)
+                    time.sleep(0.5)  # فاصل زمني بسيط جداً لضمان ترتيب وصول المجموعات
                 return True
+                
             elif 'play' in data:
                 bot.send_video(chat_id, data['play'], caption="") 
                 return True
