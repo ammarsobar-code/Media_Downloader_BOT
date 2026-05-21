@@ -170,7 +170,8 @@ def main_handler(message):
         send_welcome(message)
         return
 
-    if any(domain in url for domain in ["tiktok.com", "snapchat.com", "v.it7.to"]):
+    # تم إضافة الفحص لروابط تويتر (twitter.com و x.com) هنا
+    if any(domain in url for domain in ["tiktok.com", "snapchat.com", "v.it7.to", "twitter.com", "x.com"]):
         prog = bot.reply_to(message, "جاري التحميل... ⏳")
         success = False
         try:
