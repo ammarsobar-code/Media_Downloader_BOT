@@ -115,7 +115,34 @@ def admin_command(message):
     if message.chat.id == ADMIN_ID:
         total_users = len(user_data)
         bot.reply_to(message, f"📊 إحصائيات الإدارة:\n\nعدد المستخدمين الإجمالي: {total_users}")
+@bot.message_handler(commands=['broadcast'])
+def broadcast_command(message):
+    if message.chat.id != ADMIN_ID:
+        return
 
+    text_to_send = message.text.replace('/broadcast', '').strip()
+    
+    if not text_to_send:
+        bot.reply_to(message, "⚠️ يرجى كتابة نص الإعلان بعد الأمر.\nمثال:\n`/broadcast رسالتك هنا`")
+        return
+
+    status_msg = bot.reply_to(message, "📢 جاري بدء إرسال الإعلان للمستخدمين...")
+    success_count = 0
+    fail_count = 0
+
+    for uid in list(user_data.keys()):
+        try:
+            bot.send_message(int(uid), text_to_send)
+            success_count += 1
+            time.sleep(0.1)  # لتفادي حظر التليجرام للبوت عند الإرسال الجماعي
+        except:
+            fail_count += 1
+
+    bot.edit_message_text(
+        f"✅ تم الانتهاء من الإرسال بنجاح!\n\n📈 نجحت: {success_count}\n❌ فشلت: {fail_count}",
+        message.chat.id,
+        status_msg.message_id
+    )
 @bot.callback_query_handler(func=lambda call: call.data == "verify_user")
 def verify_callback(call):
     uid = str(call.message.chat.id)
